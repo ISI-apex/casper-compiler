@@ -15,10 +15,13 @@ public:
 public:
   ValueImpl(enum ValueType type);
   virtual ~ValueImpl();
+  virtual mlir::Value load(mlir::OpBuilder &builder);
 public:
   enum ValueType type;
-  mlir::Value ref;
+  mlir::Type stdTy; 
   mlir::Value ptr;
+  mlir::Value ref;
+  mlir::Value ref_foo;
 };
 
 class ScalarImpl : public ValueImpl {
@@ -26,6 +29,7 @@ public:
   enum ScalarType {
     Int,
     Double,
+    Ptr,
   };
 public:
   ScalarImpl(enum ScalarType type, bool initialized);
@@ -33,6 +37,9 @@ public:
   virtual mlir::LLVM::LLVMType getLLVMType(
       mlir::LLVM::LLVMDialect *llvmDialect) = 0;
   virtual mlir::Attribute getInitValue(mlir::OpBuilder &builder) = 0;
+  virtual bool isPointer();
+  virtual mlir::Value getPtr();
+  virtual mlir::Value load(mlir::OpBuilder &builder);
 public:
   enum ScalarType type;
   const bool initialized;
@@ -64,6 +71,21 @@ public:
   const double v;
 };
 
+class PtrScalarImpl : public ScalarImpl {
+public:
+	PtrScalarImpl(ScalarImpl *dest);
+
+	virtual mlir::Type getType(mlir::OpBuilder &builder);
+	virtual mlir::LLVM::LLVMType getLLVMType(
+	    mlir::LLVM::LLVMDialect *llvmDialect);
+	virtual mlir::Attribute getInitValue(mlir::OpBuilder &builder);
+	virtual bool isPointer();
+	virtual mlir::Value getPtr();
+	virtual mlir::Value load(mlir::OpBuilder &builder);
+public:
+  ScalarImpl *dest;
+};
+
 class DatImpl : public ValueImpl {
 protected:
   DatImpl(int dims, const std::vector<int> size);
@@ -73,7 +95,6 @@ public:
 public:
   const int dims;
   std::vector<int> size;
-
 };
 
 class DoubleDatImpl : public DatImpl {

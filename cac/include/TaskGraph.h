@@ -60,6 +60,11 @@ namespace cac {
 		DoubleScalar(double v);
 	};
 
+	class PtrScalar : public Scalar {
+	public:
+		PtrScalar(Scalar *dest);
+	};
+
 	class PyObj : public Value {
 	public:
 		PyObj(PyObjImpl *impl);
@@ -177,6 +182,7 @@ namespace cac {
 		IntScalar& createIntScalar(uint8_t width);
 		IntScalar& createIntScalar(uint8_t width, uint64_t v);
 		DoubleScalar& createDoubleScalar(double v);
+		PtrScalar& createPtrScalar(Scalar *dest);
 
 		Task& createTask(HalideKernel kern,
 				std::vector<Value *> args = {},

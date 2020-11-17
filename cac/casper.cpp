@@ -93,7 +93,9 @@ void compile(TaskGraph &tg, const Options &opts) {
 		}
 	}
 
+#if 0
 	compilePyGeneratedTasks(tg, opts);
+#endif
 
 	if (opts.buildArgsFile.size())
 		composeArgsFile(tg, db, halideLibs, opts.buildArgsFile);

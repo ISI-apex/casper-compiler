@@ -349,7 +349,7 @@ public:
     StringRef func = funcAttr.getValue();
 
     auto kernRef = getOrInsertKernFunc(rewriter, parentModule,
-        func, operands, llvmDialect);
+        func, op, operands, llvmDialect);
     auto kernOp = cast<toy::KernelOp>(op);
 
     rewriter.create<CallOp>(loc, kernRef, ArrayRef<Type>(), kernOp.input());
@@ -365,6 +365,7 @@ private:
   static FlatSymbolRefAttr getOrInsertKernFunc(PatternRewriter &rewriter,
                                              ModuleOp module,
                                              StringRef name,
+                                             Operation *op,
                                              ArrayRef<Value> operands,
                                              LLVM::LLVMDialect *llvmDialect) {
     auto *context = module.getContext();
@@ -391,20 +392,43 @@ private:
           }
         }
         if (!isScalar) {
+#if 0
           if (operTy.isa<IntegerType>() || operTy.isa<FloatType>()) {
+#else
+          if (llvmOperTy.isFloatTy() || llvmOperTy.isDoubleTy() ||
+              llvmOperTy.isIntegerTy()) {
+#endif
             opers.push_back(operTy.cast<LLVM::LLVMType>());
-#if 0 // TODO: how to detect memref operand?
+#if 0
           } else if (operTy.isa<MemRefType>()) {
 #else
-          } else {
+          } else if (llvmOperTy.isStructTy()) {  // TODO: stricter constraint
+            std::cerr << "DAT TYPE:" << llvmOperTy.isStructTy() << std::endl;
+            operTy.dump();
+            llvmOperTy.dump();
+            std::cerr << std::endl;
 #endif
+
+            auto elemPtrTy = llvmOperTy.getStructElementType(0);
+            auto dimSizeArrTy = llvmOperTy.getStructElementType(3);
+            assert(dimSizeArrTy.isArrayTy());
+            unsigned dims = dimSizeArrTy.getArrayNumElements();
+
+#if 0
             opers.push_back(llvmDTy.getPointerTo()); /* buffer */
             opers.push_back(llvmDTy.getPointerTo()); /* start of aligned data */
+#else
+            opers.push_back(elemPtrTy); /* buffer */
+            opers.push_back(elemPtrTy); /* start of aligned data */
+#endif
             opers.push_back(llvmITy); /* offset into buffer */
-            opers.push_back(llvmITy); /* size per dim */
-            opers.push_back(llvmITy);
-            opers.push_back(llvmITy); /* stride per dim */
-            opers.push_back(llvmITy);
+            for (int i = 0; i < dims; ++i) {
+              opers.push_back(llvmITy); /* size per dim */
+              opers.push_back(llvmITy); /* stride per dim */
+            }
+          } else {
+            op->emitError("unsupported operand type");
+            failure();
           }
         }
       }
