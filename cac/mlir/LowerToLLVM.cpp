@@ -434,7 +434,7 @@ private:
       }
 
       // TODO: unranked memref?
-      assert(opers.size() > 0);
+      //assert(opers.size() > 0);
       auto llvmFnType = LLVM::LLVMType::getFunctionTy(llvmVoidTy,
         opers, /*isVarArg*/ false);
 
