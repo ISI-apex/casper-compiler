@@ -332,8 +332,10 @@ public:
   LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
+#if 0
     auto memRefType = (*op->operand_type_begin()).cast<MemRefType>();
     auto memRefShape = memRefType.getShape();
+#endif
     auto loc = op->getLoc();
     auto *llvmDialect =
         op->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
@@ -347,7 +349,7 @@ public:
     StringRef func = funcAttr.getValue();
 
     auto kernRef = getOrInsertKernFunc(rewriter, parentModule,
-        func, op->getNumOperands(), llvmDialect);
+        func, operands, llvmDialect);
     auto kernOp = cast<toy::KernelOp>(op);
 
     rewriter.create<CallOp>(loc, kernRef, ArrayRef<Type>(), kernOp.input());
@@ -362,7 +364,8 @@ private:
   /// module if necessary.
   static FlatSymbolRefAttr getOrInsertKernFunc(PatternRewriter &rewriter,
                                              ModuleOp module,
-                                             StringRef name, int numOpers,
+                                             StringRef name,
+                                             ArrayRef<Value> operands,
                                              LLVM::LLVMDialect *llvmDialect) {
     auto *context = module.getContext();
     if (!module.lookupSymbol<LLVM::LLVMFuncOp>(name)) {
@@ -374,17 +377,40 @@ private:
       auto llvmDTy = LLVM::LLVMType::getDoubleTy(llvmDialect);
 
       std::vector<LLVM::LLVMType> opers;
-      for (int i = 0; i < numOpers; ++i) {
-        opers.push_back(llvmDTy.getPointerTo()); /* buffer */
-        opers.push_back(llvmDTy.getPointerTo()); /* start of aligned data */
-        opers.push_back(llvmITy); /* offset into buffer */
-        opers.push_back(llvmITy); /* size per dim */
-        opers.push_back(llvmITy);
-        opers.push_back(llvmITy); /* stride per dim */
-        opers.push_back(llvmITy);
+      for (auto operand : operands) {
+        auto operTy = operand.getType();
+        auto llvmOperTy = operTy.cast<LLVM::LLVMType>();
+        bool isScalar = false;
+        if (llvmOperTy.isPointerTy()) {
+          auto llvmPointeeTy = llvmOperTy.getPointerElementTy();
+          if (llvmPointeeTy.isDoubleTy() || llvmPointeeTy.isIntegerTy() ||
+              llvmPointeeTy.isFloatTy()) {
+            std::cerr << "INFO: scalar operand detected" << std::endl;
+            opers.push_back(llvmOperTy);
+            isScalar = true;
+          }
+        }
+        if (!isScalar) {
+          if (operTy.isa<IntegerType>() || operTy.isa<FloatType>()) {
+            opers.push_back(operTy.cast<LLVM::LLVMType>());
+#if 0 // TODO: how to detect memref operand?
+          } else if (operTy.isa<MemRefType>()) {
+#else
+          } else {
+#endif
+            opers.push_back(llvmDTy.getPointerTo()); /* buffer */
+            opers.push_back(llvmDTy.getPointerTo()); /* start of aligned data */
+            opers.push_back(llvmITy); /* offset into buffer */
+            opers.push_back(llvmITy); /* size per dim */
+            opers.push_back(llvmITy);
+            opers.push_back(llvmITy); /* stride per dim */
+            opers.push_back(llvmITy);
+          }
+        }
       }
 
       // TODO: unranked memref?
+      assert(opers.size() > 0);
       auto llvmFnType = LLVM::LLVMType::getFunctionTy(llvmVoidTy,
         opers, /*isVarArg*/ false);
 
@@ -790,9 +816,14 @@ public:
         argTypes.push_back(ptrTy);
         argVals.push_back(allocated);
       } else {
+        argTypes.push_back(typeConverter->convertType(operTy)
+          .cast<LLVM::LLVMType>());
+        argVals.push_back(operand);
+#if 0
         // Should not happen, because argument type constraints in Ops.td
         op->emitError("unsupported operand type");
         return failure();
+#endif
       }
     }
 

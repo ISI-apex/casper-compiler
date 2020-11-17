@@ -294,8 +294,13 @@ int buildMLIRFromGraph(OwningModuleRef &module, cac::TaskGraph &tg,
       auto loaded = builder.create<LLVM::LoadOp>(loc, sPtr);
       // TODO: It's ridiculous to go LLVM->std here, we should stay in std, but
       // how to allocate a scalar in std? (alloca is only for memref? wtf)
+#if 0
       scalarImpl->ref = builder.create<LLVM::DialectCastOp>(loc,
 	  sStdTy, loaded);
+#else
+      scalarImpl->ref = sPtr;
+#endif
+      //scalarImpl->ptr = sPtr;
       break;
     }
     case cac::ValueImpl::Dat: {

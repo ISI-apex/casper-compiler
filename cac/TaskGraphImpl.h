@@ -18,6 +18,7 @@ public:
 public:
   enum ValueType type;
   mlir::Value ref;
+  mlir::Value ptr;
 };
 
 class ScalarImpl : public ValueImpl {

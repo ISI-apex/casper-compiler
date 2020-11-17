@@ -5,13 +5,17 @@ set(CASPER_COMPILER_LIB cac)
 #   SOURCES: source files for the metaprogram, including Halide generators
 #   C_KERNEL_SOURCES: source files with kernels written in C
 #   BUILD_DIR: directory where to put the application binary (has a default)
+#   EXTRA_PACKAGES: list of packages to pass to find_package in the nested
+#                   cmake project (may be needed when EXTRA_LIBRARIES
+#                   contains aliases like Package::foo)
+#   EXTRA_LIBRARIES: list of libraries to link the target against
 # Sets:
 #   ${target}_BUILD_DIR: build directory that contains target executable
 function(casper_add_exec target meta_prog)
 	cmake_parse_arguments(FARG
 		""
 		"PLATFORM;INPUT_DESC;CANDIDATES;TUNED_PARAMS;EXTRA_PYTHONPATH"
-		"SOURCES;C_KERNEL_SOURCES;TRAIN_ARGS"
+		"SOURCES;C_KERNEL_SOURCES;EXTRA_INCLUDE_DIRS;EXTRA_PACKAGES;EXTRA_LIBRARIES;TRAIN_ARGS"
 		${ARGN})
 
 	set(SPEC_FILES
@@ -39,8 +43,11 @@ function(casper_add_exec target meta_prog)
 		--platform ${FARG_PLATFORM}
 		--python-path "${CMAKE_CURRENT_SOURCE_DIR}:${CAC_PYAPI_DIR}:${CAC_PY_DIR}:${Python_SITELIB}:${FARG_EXTRA_PYTHONPATH}"
 	)
-	set(META_PROG_OPTS
+	set(TARGET_OPTS
 		C_KERNEL_SOURCES ${FARG_C_KERNEL_SOURCES}
+		EXTRA_INCLUDE_DIRS ${FARG_EXTRA_INCLUDE_DIRS}
+		EXTRA_PACKAGES ${FARG_EXTRA_PACKAGES}
+		EXTRA_LIBRARIES ${FARG_EXTRA_LIBRARIES}
 	)
 	set(META_PROG_DEPS
 		${FARG_PLATFORM}
@@ -69,7 +76,7 @@ function(casper_add_exec target meta_prog)
 	#		${META_PROG_ARGS}
 	#	DEPENDS ${meta_prog} ${META_PROG_DEPS})
 
-	#create_nested_proj(${prof_harness} PROFILING_HARNESS ${META_PROG_OPTS})
+	#create_nested_proj(${prof_harness} PROFILING_HARNESS ${TARGET_OPTS})
 	#build_nested_proj(${prof_harness} PROF_HARNESS_BUILD_DIR)
 
 	#add_custom_target(${target}.harness
@@ -110,7 +117,9 @@ function(casper_add_exec target meta_prog)
 			#${target}.models/timestamp)
 	add_custom_target(${target}.compile DEPENDS ${target}.ll)
 
-	create_nested_proj(${target} APP ${META_PROG_OPTS})
+	# TODO: investigate cmake's 'export' feature to help with
+	# accessing targets defined by the nested project from parent
+	create_nested_proj(${target} APP ${TARGET_OPTS})
 	build_nested_proj(${target} TARGET_BUILD_DIR)
 
 	# Note: for some reason naming this target '${target}' does not work
@@ -133,6 +142,10 @@ function(create_nested_proj proj)
 cmake_minimum_required(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
 project(${prj} LANGUAGES CXX C)
 set(CMAKE_MODULE_PATH  ${CMAKE_MODULE_PATH})
+# Forward from parent project
+set(CMAKE_CXX_STANDARD ${CMAKE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ${CMAKE_CXX_STANDARD_REQUIRED})
+set(CMAKE_CXX_EXTENSIONS ${CMAKE_CXX_EXTENSIONS})
 include(casper)
 casper_build(${proj} ${CMAKE_CURRENT_BINARY_DIR}/${proj}.args ${ARGN})
 "
@@ -176,11 +189,15 @@ function(casper_build target app_args_file)
 	cmake_parse_arguments(FARG
 		"APP;PROFILING_HARNESS"
 		""
-		"C_KERNEL_SOURCES;HALIDE_TASK_LIBS;NODE_TYPE_IDS"
+		"C_KERNEL_SOURCES;HALIDE_TASK_LIBS;NODE_TYPE_IDS;EXTRA_INCLUDE_DIRS;EXTRA_PACKAGES;EXTRA_LIBRARIES"
 		${ARGS_FROM_FILE} ${ARGN})
 
 	find_program(LLC llc REQUIRED DOC "LLVM IR compiler")
 	find_package(Threads)
+
+	foreach (pkg ${FARG_EXTRA_PACKAGES})
+		find_package(${pkg})
+	endforeach()
 
 	if (${FARG_PROFILING_HARNESS})
 		set(rtlib casper_runtime_prof)
@@ -214,6 +231,8 @@ function(casper_build target app_args_file)
 	if (c_src_files)
 		set(lib ${target}_kern_c)
 		add_library(${lib} ${c_src_files})
+		target_include_directories(${lib}
+			PUBLIC ${FARG_EXTRA_INCLUDE_DIRS})
 		list(APPEND kernel_libs ${lib})
 	endif ()
 
@@ -224,7 +243,10 @@ function(casper_build target app_args_file)
 
 	# Link the application binary
 	add_executable(${target} ${CMAKE_CURRENT_BINARY_DIR}/${target}.o)
+	target_include_directories(${target}
+		PUBLIC ${FARG_EXTRA_INCLUDE_DIRS})
 	target_link_libraries(${target} ${kernel_libs} ${CASPER_RUNTIME_LIBRARY}
-	    Threads::Threads ${CMAKE_DL_LIBS})
+		${FARG_EXTRA_LIBRARIES}
+		Threads::Threads ${CMAKE_DL_LIBS})
 	set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CXX)
 endfunction()
