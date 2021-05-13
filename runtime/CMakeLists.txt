@@ -16,6 +16,7 @@ add_library(${lib_prof} SHARED
 )
 
 find_package(Halide REQUIRED)
+find_package(MPI REQUIRED)
 
 # TODO: not all apps need python, make optional
 # Settings common to both libs
@@ -23,7 +24,7 @@ foreach (rtlib ${lib} ${lib_prof})
   find_package(Python COMPONENTS Development REQUIRED)
   target_include_directories(${rtlib} PRIVATE ${Python_INCLUDE_DIRS})
   target_link_directories(${rtlib} PRIVATE ${Python_LIBRARY_DIRS})
-  target_link_libraries(${rtlib} ${Python_LIBRARIES} Halide::Tools)
+  target_link_libraries(${rtlib} ${Python_LIBRARIES} Halide::Tools MPI::MPI_C)
 endforeach()
 
 target_link_libraries(${lib_prof} Halide::Tools)
