@@ -5,6 +5,7 @@ set(COMMON_SOURCES
   monitor.cpp
   platform.cpp
   python.cpp
+  runtime.cpp
 )
 
 add_library(${lib} SHARED ${COMMON_SOURCES})

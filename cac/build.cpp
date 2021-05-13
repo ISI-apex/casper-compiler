@@ -217,10 +217,10 @@ int buildMLIRFromGraph(OwningModuleRef &module, cac::TaskGraph &tg,
   auto llvmDialect = context.getRegisteredDialect<LLVM::LLVMDialect>();
 
   // Names are contract with Casper runtime
-  auto initPlatFunc = declareVoidFunc(builder, module, llvmDialect,
-      "_crt_plat_init");
-  auto finPlatFunc = declareVoidFunc(builder, module, llvmDialect,
-      "_crt_plat_finalize");
+  auto crtInitFunc = declareVoidFunc(builder, module, llvmDialect,
+      "_crt_init");
+  auto crtFinFunc = declareVoidFunc(builder, module, llvmDialect,
+      "_crt_finalize");
   auto initPyFunc = declareVoidFunc(builder, module, llvmDialect,
       "_crt_py_init");
   auto finPyFunc = declareVoidFunc(builder, module, llvmDialect,
@@ -249,7 +249,7 @@ int buildMLIRFromGraph(OwningModuleRef &module, cac::TaskGraph &tg,
   auto &entryBlock = *main.addEntryBlock();
   builder.setInsertionPointToStart(&entryBlock);
 
-  builder.create<LLVM::CallOp>(loc, initPlatFunc, ValueRange{});
+  builder.create<LLVM::CallOp>(loc, crtInitFunc, ValueRange{});
   builder.create<LLVM::CallOp>(loc, initPyFunc, ValueRange{});
 
   bool havePyTasks = false;
@@ -415,7 +415,7 @@ int buildMLIRFromGraph(OwningModuleRef &module, cac::TaskGraph &tg,
   }
 
   builder.create<LLVM::CallOp>(loc, finPyFunc, ValueRange{});
-  builder.create<LLVM::CallOp>(loc, finPlatFunc, ValueRange{});
+  builder.create<LLVM::CallOp>(loc, crtFinFunc, ValueRange{});
 
   // Return from main
   auto zeroVal = builder.create<mlir::ConstantOp>(loc,
