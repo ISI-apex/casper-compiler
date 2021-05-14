@@ -871,11 +871,11 @@ public:
 
     IntegerAttr profileAttr = op->getAttrOfType<IntegerAttr>("profile");
     bool profile = profileAttr ? profileAttr.getInt() : false;
-    std::cout << "profile: " << profile << std::endl;
+    std::cout << "kern " << kernName << " profile: " << profile << std::endl;
 
     IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
     bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
-    std::cout << "onlyRank0: " << onlyRank0 << std::endl;
+    std::cout << "kern " << kernName << " onlyRank0: " << onlyRank0 << std::endl;
 
     Value taskName = toy::allocString(rewriter, llvmDialect, loc,
         op, "func");
