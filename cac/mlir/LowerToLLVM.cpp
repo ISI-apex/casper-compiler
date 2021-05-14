@@ -161,8 +161,9 @@ LLVM::CallOp callCRTMonTaskEnd(ConversionPatternRewriter &rewriter,
 }
 
 // emit a branch: if (rank == 0) { ... }
-// leaves the insertion pointer at ^
-void emitMPIRankBranch(ConversionPatternRewriter &rewriter,
+// leaves the insertion pointer at ^            ^
+// returns the successor block, i.e. this point |
+mlir::Block *emitMPIRankBranch(ConversionPatternRewriter &rewriter,
 		ModuleOp &mod, LLVM::LLVMDialect *llvmDialect, Location loc) {
       auto mpiRankCall = callCRTGetMPIRank(rewriter, mod, llvmDialect, loc);
       auto mpiRank = mpiRankCall.getResult(0);
@@ -174,10 +175,11 @@ void emitMPIRankBranch(ConversionPatternRewriter &rewriter,
           LLVM::ICmpPredicate::eq, mpiRank, zero);
 
       auto entryBlock = rewriter.getInsertionBlock();
+      auto branchPt = rewriter.getInsertionPoint();
 
       // split off a block for the "if" clause and a block post if(){}.
-      auto ifBlock = entryBlock->splitBlock(entryBlock->getTerminator());
-      auto exitBlock = ifBlock->splitBlock(ifBlock->getTerminator());
+      auto ifBlock = rewriter.splitBlock(entryBlock, branchPt);
+      auto exitBlock = rewriter.splitBlock(ifBlock, ifBlock->begin());
 
       // Terminate the entry block with a conditional branch
       rewriter.setInsertionPoint(entryBlock, entryBlock->end());
@@ -192,6 +194,7 @@ void emitMPIRankBranch(ConversionPatternRewriter &rewriter,
 
       // The kernel call inserted below goes into the if clause block
       rewriter.setInsertionPoint(ifBlock, ifBlock->begin());
+      return exitBlock;
 }
 
 /// Return a symbol reference to the kernel function, inserting it into the
@@ -680,6 +683,14 @@ public:
 
     ModuleOp parentModule = op->getParentOfType<ModuleOp>();
 
+    IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
+    bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
+
+    mlir::Block *exitBlock = NULL;
+    if (onlyRank0) {
+      exitBlock = emitMPIRankBranch(rewriter, parentModule, llvmDialect, loc);
+    }
+
     // MemRefType -> struct halide_buffer_t
 
     SmallVector<LLVM::LLVMType, 8> argTypes;
@@ -906,14 +917,6 @@ public:
     bool profile = profileAttr ? profileAttr.getInt() : false;
     std::cout << "kern " << kernName << " profile: " << profile << std::endl;
 
-    IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
-    bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
-    std::cout << "kern " << kernName << " onlyRank0: " << onlyRank0 << std::endl;
-
-    if (onlyRank0) {
-      emitMPIRankBranch(rewriter, parentModule, llvmDialect, loc);
-    }
-
     Value taskName = toy::allocString(rewriter, llvmDialect, loc,
         op, "func");
 
@@ -947,6 +950,11 @@ public:
       invokeKernel(rewriter, funcPtr, argVals, op, llvmDialect);
       callCRTMonTaskEnd(rewriter, parentModule, llvmDialect, loc,
           {taskName, nodeId});
+    }
+
+    if (onlyRank0) {
+      assert(exitBlock);
+      rewriter.setInsertionPoint(exitBlock, exitBlock->begin());
     }
 
     // Notify the rewriter that this operation has been removed.
