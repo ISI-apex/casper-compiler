@@ -383,6 +383,15 @@ public:
 
     ModuleOp parentModule = op->getParentOfType<ModuleOp>();
 
+    IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
+    bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
+    std::cout << "onlyRank0: " << onlyRank0 << std::endl;
+
+    mlir::Block *exitBlock = NULL;
+    if (onlyRank0) {
+      exitBlock = emitMPIRankBranch(rewriter, parentModule, llvmDialect, loc);
+    }
+
     // Get a symbol reference to the kernel function, inserting it if necessary.
     StringAttr funcAttr = op->getAttrOfType<StringAttr>("func");
     assert(funcAttr); // verified
@@ -393,6 +402,11 @@ public:
     auto kernOp = cast<toy::KernelOp>(op);
 
     rewriter.create<CallOp>(loc, kernRef, ArrayRef<Type>(), kernOp.input());
+
+    if (onlyRank0) {
+      assert(exitBlock);
+      rewriter.setInsertionPoint(exitBlock, exitBlock->begin());
+    }
 
     // Notify the rewriter that this operation has been removed.
     rewriter.eraseOp(op);
@@ -497,6 +511,14 @@ public:
 
     ModuleOp module = op->getParentOfType<ModuleOp>();
 
+    IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
+    bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
+
+    mlir::Block *exitBlock = NULL;
+    if (onlyRank0) {
+      exitBlock = emitMPIRankBranch(rewriter, module, llvmDialect, loc);
+    }
+
     // Get a symbol reference to the kernel function, inserting it if necessary.
     // Declare launcher function: func name is a contract with Casper runtime
 
@@ -565,6 +587,11 @@ public:
                                argsLen, argsArrPtr};
 
     rewriter.create<CallOp>(loc, launchFuncRef, ArrayRef<Type>(), args);
+
+    if (onlyRank0) {
+      assert(exitBlock);
+      rewriter.setInsertionPoint(exitBlock, exitBlock->begin());
+    }
 
     // Notify the rewriter that this operation has been removed.
     rewriter.eraseOp(op);
