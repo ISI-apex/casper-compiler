@@ -24,4 +24,8 @@ void _crt_finalize() {
 	_crt_plat_finalize();
 }
 
+int _crt_get_mpi_rank() {
+	return rank;
+}
+
 } // extern

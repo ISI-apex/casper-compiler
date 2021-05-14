@@ -122,6 +122,14 @@ LLVM::CallOp callCRTGetNodeTypeId(ConversionPatternRewriter &rewriter,
 	};
 	return callCRT(rewriter, mod, loc, "_crt_plat_get_node_type_id", typeCtor);
 }
+LLVM::CallOp callCRTGetMPIRank(ConversionPatternRewriter &rewriter,
+		ModuleOp &mod, LLVM::LLVMDialect *llvmDialect, Location loc) {
+	auto typeCtor = [llvmDialect]() {
+		auto llvmIntTy = LLVM::LLVMType::getInt32Ty(llvmDialect);
+		return LLVM::LLVMType::getFunctionTy(llvmIntTy, {}, /*isVarArg*/ false);
+	};
+	return callCRT(rewriter, mod, loc, "_crt_get_mpi_rank", typeCtor);
+}
 
 LLVM::CallOp callCRTMonTaskBegin(ConversionPatternRewriter &rewriter,
 		ModuleOp &mod, LLVM::LLVMDialect *llvmDialect, Location loc,
@@ -865,8 +873,44 @@ public:
     bool profile = profileAttr ? profileAttr.getInt() : false;
     std::cout << "profile: " << profile << std::endl;
 
+    IntegerAttr onlyRank0Attr = op->getAttrOfType<IntegerAttr>("onlyRank0");
+    bool onlyRank0 = onlyRank0Attr ? onlyRank0Attr.getInt() : false;
+    std::cout << "onlyRank0: " << onlyRank0 << std::endl;
+
     Value taskName = toy::allocString(rewriter, llvmDialect, loc,
         op, "func");
+
+    // if task only for rank 0, emit a branch: if (rank == 0) { call kernel }
+    if (onlyRank0) {
+      auto mpiRank = callCRTGetMPIRank(rewriter, parentModule, llvmDialect,
+          loc).getResult(0);
+
+      auto intTy = LLVM::LLVMType::getInt32Ty(llvmDialect);
+      mlir::Value zero = rewriter.create<LLVM::ConstantOp>(loc, intTy,
+          rewriter.getIntegerAttr(rewriter.getIndexType(), 0));
+      auto rankEqualsZero = rewriter.create<LLVM::ICmpOp>(loc,
+          LLVM::ICmpPredicate::eq, mpiRank, zero);
+
+      auto entryBlock = rewriter.getInsertionBlock();
+
+      // split off a block for the "if" clause and a block post if(){}.
+      auto ifBlock = entryBlock->splitBlock(entryBlock->getTerminator());
+      auto exitBlock = ifBlock->splitBlock(ifBlock->getTerminator());
+
+      // Terminate the entry block with a conditional branch
+      rewriter.setInsertionPoint(entryBlock, entryBlock->end());
+      rewriter.create<LLVM::CondBrOp>(loc, rankEqualsZero,
+          ifBlock, exitBlock);
+      assert(entryBlock->getTerminator());
+
+      // Terminate the if Block block with an unconditional branch
+      rewriter.setInsertionPoint(ifBlock, ifBlock->end());
+      rewriter.create<LLVM::BrOp>(loc, mlir::ValueRange{}, exitBlock);
+      assert(ifBlock->getTerminator());
+
+      // The kernel call inserted below goes into the if clause block
+      rewriter.setInsertionPoint(ifBlock, ifBlock->begin());
+    }
 
     // TODO: reorg the code, so that we don't have this fundamental branch
     if (profile) {

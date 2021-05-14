@@ -87,8 +87,9 @@ namespace cac {
 	public:
 		Task(enum TaskType type, const std::string &func,
 				std::vector<Value *> args)
-			: type(type), func(func), args(args), visited(false) { }
-		Task() : args(), visited(false) { }
+			: type(type), func(func), args(args), visited(false),
+			onlyRank0(false) { }
+		Task() : args(), visited(false), onlyRank0(false) { }
 	public:
 		enum TaskType type;
 		// TODO: store kernel object instead?
@@ -96,6 +97,7 @@ namespace cac {
 		std::vector<Value *> args;
 		std::vector<Task *> deps;
 		bool visited;
+		bool onlyRank0;
 	};
 
 	class HalideTask : public Task {

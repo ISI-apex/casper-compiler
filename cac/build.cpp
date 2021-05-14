@@ -50,6 +50,11 @@ void invokeKernels(OpBuilder &builder, MLIRContext &context,
   NamedAttribute variantsNAttr(
       Identifier::get(StringRef("variants"), &context), variantsAttr);
 
+  auto boolTy = builder.getIntegerType(32);
+  auto onlyRank0Attr = IntegerAttr::get(boolTy, task.onlyRank0);
+  NamedAttribute onlyRank0NAttr(Identifier::get(StringRef("onlyRank0"),
+	&context), onlyRank0Attr);
+
   std::vector<mlir::Value> args;
   for (cac::Value *val : task.args) {
     args.push_back(val->getImpl()->load(builder));
@@ -68,19 +73,21 @@ void invokeKernels(OpBuilder &builder, MLIRContext &context,
 	    &context), profileAttr);
       builder.create<toy::HalideKernelOp>(loc,
 	ArrayRef<Type>{}, ValueRange(args),
-	ArrayRef<NamedAttribute>{funcNAttr, variantsNAttr, profileNAttr});
+	ArrayRef<NamedAttribute>{funcNAttr, variantsNAttr, profileNAttr,
+	  onlyRank0NAttr});
       break;
   }
   case cac::Task::C:
       builder.create<toy::KernelOp>(builder.getUnknownLoc(),
 	ArrayRef<Type>{}, ValueRange(args),
-	ArrayRef<NamedAttribute>{funcNAttr, variantsNAttr});
+	ArrayRef<NamedAttribute>{funcNAttr, variantsNAttr, onlyRank0NAttr});
       break;
   case cac::Task::Python: {
       cac::PyTask& pyTask = static_cast<cac::PyTask&>(task);
       std::vector<NamedAttribute> attrs;
 
       attrs.push_back(variantsNAttr);
+      attrs.push_back(onlyRank0NAttr);
 
       std::vector<mlir::Value> pyArgs{pyTask.impl->generatorContext};
 
